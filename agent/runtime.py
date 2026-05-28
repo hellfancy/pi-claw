@@ -7,6 +7,7 @@ from tools import get_tools, ToolExecutor
 
 from agent.events import AgentEvent
 from agent.session import AgentSession
+from agent.compaction import compact_messages, should_compact, split_for_compaction
 
 from pathlib import Path
 from agent.skills import expand_skill_invocation, load_skills
@@ -20,10 +21,17 @@ class AgentRuntime:
         model: str = "gpt-5.5",
         api_key_env: str = "OPENAI_API_KEY",
         base_url_env: str = "OPENAI_BASE_URL",
+        compact_enabled: bool = True,
+        compact_max_messages: int = 30,
+        compact_keep_recent_messages: int = 10,
     ) -> None:
         self.model = model
         self.api_key_env = api_key_env
         self.base_url_env = base_url_env
+        self.compact_enabled = compact_enabled
+        self.compact_max_messages = compact_max_messages
+        self.compact_keep_recent_messages = compact_keep_recent_messages
+
         self.tool_executor = ToolExecutor()
         self.session = session or AgentSession(
             tools=[tool.to_llm_format() for tool in get_tools()]
@@ -89,6 +97,9 @@ class AgentRuntime:
                     "turn": turn,
                     "has_tool_calls": False,
                 })
+
+                yield from self._compact_if_needed()
+
                 yield AgentEvent("agent_end", {})
                 return
 
@@ -123,3 +134,55 @@ class AgentRuntime:
             })
 
             turn += 1
+
+    def _compact_if_needed(self) -> Iterator[AgentEvent]:
+        if not should_compact(
+            self.session.messages,
+            enabled=self.compact_enabled,
+            max_messages=self.compact_max_messages,
+        ):
+            return
+
+        messages_before = len(self.session.messages)
+
+        old_messages, recent_messages = split_for_compaction(
+            self.session.messages,
+            keep_recent_messages=self.compact_keep_recent_messages,
+        )
+
+        if not old_messages:
+            return
+
+        yield AgentEvent("compaction_start", {
+            "reason": "message_limit",
+            "messages_before": messages_before,
+            "messages_to_summarize": len(old_messages),
+            "messages_to_keep": len(recent_messages),
+        })
+
+        try:
+            summary = compact_messages(
+                old_messages,
+                model=self.model,
+                api_key_env=self.api_key_env,
+                base_url_env=self.base_url_env,
+            )
+        except Exception as exc:
+            yield AgentEvent("compaction_end", {
+                "ok": False,
+                "error": str(exc),
+                "messages_before": messages_before,
+            })
+            return
+
+        self.session.compact(
+            summary=summary,
+            recent_messages=recent_messages,
+            messages_before=messages_before,
+        )
+
+        yield AgentEvent("compaction_end", {
+            "ok": True,
+            "messages_before": messages_before,
+            "messages_after": len(self.session.messages),
+        })

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any
 from agent.session_store import JsonlSessionStore
+from agent.compaction import create_compaction_summary_message
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是一个会调用工具的 coding agent。"
@@ -15,7 +16,7 @@ class AgentSession:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         tools: list[dict[str, Any]] | None = None,
         messages: list[dict[str, Any]] | None = None,
-        store: JsonlSessionStore | None = None
+        store: JsonlSessionStore | None = None,
     ) -> None:
         self.system_prompt = system_prompt
         self.messages: list[dict[str, Any]] = list(messages or [])
@@ -34,6 +35,23 @@ class AgentSession:
 
     def add_tool_message(self, message: dict[str, Any]) -> dict[str, Any]:
         return self._append_message(message)
+
+    def compact(
+        self,
+        *,
+        summary: str,
+        recent_messages: list[dict[str, Any]],
+        messages_before: int,
+    ) -> None:
+        summary_message = create_compaction_summary_message(summary)
+        self.messages = [summary_message, *recent_messages]
+
+        if self.store:
+            self.store.overwrite_compacted(
+                summary=summary,
+                messages=recent_messages,
+                messages_before=messages_before,
+            )
 
     def _append_message(self, message: dict[str, Any]) -> dict[str, Any]:
         self.messages.append(message)

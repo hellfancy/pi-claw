@@ -26,6 +26,24 @@ def render_event(event) -> None:
         print(f"✨ Skill: {event.data['input']}")
         return
 
+    if event.type == "compaction_start":
+        print(
+            f"  [Compaction] start: "
+            f"{event.data['messages_to_summarize']} old messages, "
+            f"keep {event.data['messages_to_keep']}"
+        )
+        return
+
+    if event.type == "compaction_end":
+        if event.data.get("ok"):
+            print(
+                f"  [Compaction] done: "
+                f"{event.data['messages_before']} -> {event.data['messages_after']} messages"
+            )
+        else:
+            print(f"  [Compaction] skipped: {event.data['error']}")
+        return
+
     if event.type == "message_end":
         message = event.data["message"]
         role = message.get("role")
@@ -137,6 +155,9 @@ def create_runtime(args: argparse.Namespace) -> AgentRuntime:
         model=settings.model,
         api_key_env=settings.api_key_env,
         base_url_env=settings.base_url_env,
+        compact_enabled=settings.compact_enabled,
+        compact_max_messages=settings.compact_max_messages,
+        compact_keep_recent_messages=settings.compact_keep_recent_messages,
     )
 
     return runtime, session_name

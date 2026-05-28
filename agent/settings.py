@@ -15,27 +15,41 @@ class Settings:
     skills_dir: str = ".openclaw/skills"
     enable_skills: bool = True
     default_session: str = "default"
-
+    compact_enabled: bool = True
+    compact_max_messages: int = 20
+    compact_keep_recent_messages: int = 8
 
 def load_settings(cwd: Path) -> Settings:
     path = cwd / ".openclaw" / "settings.json"
+    defaults = Settings()
 
     if not path.exists():
-        return Settings()
+        return defaults
 
     data = json.loads(path.read_text(encoding="utf-8"))
 
     if not isinstance(data, dict):
-        return Settings()
+        return defaults
 
     return Settings(
-        model=_get_str(data, "model", Settings.model),
-        api_key_env=_get_str(data, "api_key_env", Settings.api_key_env),
-        base_url_env=_get_str(data, "base_url_env", Settings.base_url_env),
-        sessions_dir=_get_str(data, "sessions_dir", Settings.sessions_dir),
-        skills_dir=_get_str(data, "skills_dir", Settings.skills_dir),
-        enable_skills=_get_bool(data, "enable_skills", Settings.enable_skills),
-        default_session=_get_str(data, "default_session", Settings.default_session),
+        model=_get_str(data, "model", defaults.model),
+        api_key_env=_get_str(data, "api_key_env", defaults.api_key_env),
+        base_url_env=_get_str(data, "base_url_env", defaults.base_url_env),
+        sessions_dir=_get_str(data, "sessions_dir", defaults.sessions_dir),
+        skills_dir=_get_str(data, "skills_dir", defaults.skills_dir),
+        enable_skills=_get_bool(data, "enable_skills", defaults.enable_skills),
+        default_session=_get_str(data, "default_session", defaults.default_session),
+        compact_enabled=_get_bool(data, "compact_enabled", defaults.compact_enabled),
+        compact_max_messages=_get_int(
+            data,
+            "compact_max_messages",
+            defaults.compact_max_messages,
+        ),
+        compact_keep_recent_messages=_get_int(
+            data,
+            "compact_keep_recent_messages",
+            defaults.compact_keep_recent_messages,
+        ),
     )
 
 
@@ -49,5 +63,11 @@ def _get_str(data: dict[str, Any], key: str, default: str) -> str:
 def _get_bool(data: dict[str, Any], key: str, default: bool) -> bool:
     value = data.get(key)
     if isinstance(value, bool):
+        return value
+    return default
+
+def _get_int(data: dict[str, Any], key: str, default: int) -> int:
+    value = data.get(key)
+    if isinstance(value, int) and value > 0:
         return value
     return default
